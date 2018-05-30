@@ -1,0 +1,1317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Penn State Expertise Map</title>
+    <script type="text/javascript" src="static/dc.js-2.1.10/web/js/d3.js"></script>
+    <script type="text/javascript" src="static/dc.js-2.1.10/web/js/crossfilter.js"></script>
+    <script type="text/javascript" src="static/dc.js-2.1.10/web/js/dc.js"></script>
+    <script type="text/javascript" src="static/dc.js-2.1.10/src/data-grid.js"></script>
+    <script type="text/javascript" src="static/dcjs_example/underscore-min.js"></script>
+
+    <script type="text/javascript" src="static/dc_leaflet/web/js/leaflet.js"></script>
+    <script src="static/dc_leaflet/web/js/colorbrewer.js"></script>
+    <script type="text/javascript" src="static/dc_leaflet/web/js/leaflet.markercluster.js"></script>
+    <script type="text/javascript" src="static/dc_leaflet/web/js/dc.leaflet.js"></script>
+
+    <!--<script src="https://d3js.org/d3-request.v1.min.js"></script>-->
+    <script src="https://d3js.org/d3-queue.v3.min.js"></script>
+
+
+    <script src="static/dcjs_example/jquery.min.js"></script>
+	<link type="text/css" href="static/dc.js-2.1.10/web/css/dc.css" rel="stylesheet"/>
+    <link type="text/css" href="static/bootstrap_4.0/css/bootstrap_4.0.0-alpha.3.css" rel="stylesheet">
+    <link type="text/css" href="static/dc_leaflet/web/css/leaflet.css" rel="stylesheet"/>
+	<link type="text/css" href="static/dc_leaflet/web/css/MarkerCluster.Default.css" rel="stylesheet"/>
+	<link type="text/css" href="static/dc_leaflet/web/css/MarkerCluster.css" rel="stylesheet"/>
+	<link type="text/css" href="static/dc_leaflet/web/css/leaflet-legend.css" rel="stylesheet"/>
+
+
+    <style>
+    .keywords g.row text {
+    fill: black;
+    font-size:10pt;
+
+    }
+    .institution g.row text {
+    fill: black;
+font-size:10pt;
+
+    }
+    .author g.row text {
+    fill: black;
+    font-size:10pt;
+
+    }
+    .language g.row text {
+    fill: black;
+    font-size:10pt;
+}
+    .journal g.row text {
+    fill: black;
+    font-size:10pt;
+}
+    .conference g.row text {
+    fill: black;
+    font-size:10pt;
+}
+
+    .date g.axis text {
+        font-size:10pt;
+    }
+    .date g text.x-axis-label {
+        font-size:12pt;
+    }
+    .date g text.y-axis-label {
+        font-size:12pt;
+    }
+    .date_year g.axis text {
+        font-size:10pt;
+    }
+    .date_year g text.x-axis-label {
+        font-size:12pt;
+    }
+    .date_year g text.y-axis-label {
+        font-size:12pt;
+    }
+
+    .dc-table-column {
+        max-width:250px;
+    }
+
+
+
+    .link {
+  stroke: #ccc;
+
+}
+
+.node text {
+  pointer-events: none;
+  font: 10px sans-serif;
+}
+    </style>
+    <!--<style>
+    #holder {
+      width:850px;
+      margin:20px auto;
+    }
+    #holder>div {
+      padding:30px 0;
+      clear:both;
+    }
+    .map {
+      width:600px;
+      height:400px;
+    }
+    .pie {
+      margin-left:30px;
+    }
+    #octocat {
+      position: absolute;
+      right: 5px;
+      top: 5px;
+    }
+    /*map legend styling*/
+    /*--*/
+  </style>-->
+
+</head>
+<body>
+    <script>
+
+        function grid (selector,data) {
+
+        function extend(obj, src) {
+            for (var key in src) {
+                if (src.hasOwnProperty(key)) obj[key] = src[key];
+            }
+            return obj;
+        }
+
+        var filenames =[];
+        var i;
+        for (i = 0; i < 71; i++) {
+            filenames.push("static/data/PSU_Institutions/master_institutions_"+pad(i*100,5)+'.json')
+        }
+
+         var queue = d3.queue();
+         console.time('Inst Loaded')
+         filenames.forEach(function(d,i){
+             if (i>-1){
+                 queue.defer(d3.json, d)
+             }
+        });
+          queue.awaitAll(merge_institutions);
+
+
+          console.timeEnd('Inst Loaded')
+
+          function pad(n, width, z) {
+          z = z || '0';
+          n = n + '';
+          return n.length >= width ? n : new Array(width - n.length + 1).join(z) + n;
+        }
+
+
+            console.time('Load Institutions')
+            function merge_institutions(error, loc){
+              if (error) throw error;
+            //d3.json("static/data/PSU_Institutions/merged_institutions.json",function(loc){
+                //d3.json("{% static "data/lidar_geo_full_graph_indexed.json" %}", function(error, json) {
+
+                  var merged_loc = []
+                  loc.forEach(function(d) {
+                  merged_loc = extend(merged_loc, d);
+                  });
+                  loc =merged_loc
+                  console.log(Object.keys(loc).length, 'Institutions')
+                            console.timeEnd('Load Institutions')
+
+                  console.log('data', data);
+                    //data = data.slice(0, 100);
+                    var ndx = crossfilter(data),
+                        all = ndx.groupAll();
+
+                    function roundMonths(date) {
+                        date.setDate(1);
+                        return date;
+                    }
+
+                    function remove_empty_bins(source_group) {
+                        return {
+                            all: function () {
+                                return source_group.top(15).filter(function (d) {
+                                    return d.value != 0;
+                                });
+                            }
+                        };
+                    }
+
+                    function remove_empty_bins_50(source_group) {
+                        return {
+                            all: function () {
+                                return source_group.top(50).filter(function (d) {
+                                    return d.value != 0;
+                                });
+                            }
+                        };
+                    }
+
+                    function remove_empty_text_bins(source_group) {
+                        return {
+                            all: function () {
+                                return source_group.all().filter(function (d) {
+                                    return d.key != "";
+                                });
+                            }
+                        };
+                    }
+
+                    function remove_empty_bins_all(source_group) {
+                        return {
+                            all: function () {
+                                return source_group.all().filter(function (d) {
+                                    return d.value > 0;
+                                });
+                            }
+                        };
+                    }
+
+                    function remove_negative_bins_all(source_group) {
+                        return {
+                            all: function () {
+                                return source_group.all().filter(function (d) {
+                                    return ( d.key != "-1");
+                                });
+                            }
+                        };
+                    }
+
+                    function remove_negative_bins_top50(source_group) {
+                        return {
+                            all: function () {
+                                return source_group.top(50).filter(function (d) {
+                                    return ( d.key != "-1");
+                                });
+                            }
+                        };
+                    }
+                    function filter_dimension_by_search(source_group,search_list) {
+                        return {
+                            all: function () {
+                                return source_group.all().filter(function (d) {
+                                    return ( search_list.indexOf(d.key) != -1);
+                                });
+                            }
+                        };
+                    }
+
+                    function rotateBarChartLabels(classvar) {
+                        d3.selectAll(selector + ' .' + classvar + '  g .axis.x text')
+                            .style("text-anchor", "end")
+                            .attr("transform", function (d) {
+                                return "rotate(-55, -4, 9) ";
+                            });
+                    }
+
+                    function toTitleCase(str) {
+                        return str.replace(/\w\S*/g, function (txt) {
+                            return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+                        });
+                    }
+
+
+                    function addXLabel(classvar, textcontent) {
+                        var target = d3.select('.' + classvar + ' svg')
+                        if (target.select('text.x-axis-label').empty()) {
+                            target
+                                .append("text")
+                                .attr("class", "x-axis-label")
+                                .attr("text-anchor", "middle")
+                                .attr("x", $('div.' + classvar + '').width() / 2)
+                                .attr("y", $('div.' + classvar + '').height() - 50)
+                                .text(textcontent)
+                        }
+                    }
+
+                    dc.dataCount(".dc-data-count")
+                        .dimension(ndx)
+                        .group(all);
+
+                    //--------- STYLES -----------------
+                    var pixels_per_row = 35;
+                    var label_offset = -10;
+                    var region_set = [];
+                    var region_dict = [];
+
+                    //--------- CHART DEFINITIONS -----------------
+                    var bar_keywords = dc.rowChart(selector + " .keywords");
+                    var bar_institution = dc.rowChart(selector + " .institution");
+                    var bar_author = dc.rowChart(selector + " .author");
+                    var bar_language = dc.rowChart(selector + " .language");
+                    var bar_journal = dc.rowChart(selector + " .journal");
+                    var bar_conference = dc.rowChart(selector + " .conference");
+
+                    var bar_date = dc.barChart(selector + " .date");
+                    //var bar_date_year = dc.barChart(selector + " .date_year");
+
+
+                    //---------- DIMENSIONS  ------------------------------
+
+                    //-----------------------------------------------------
+                    console.time('Load Keyword Dimensions')
+                    var keywords = ndx.dimension(function (d) {
+                        if (typeof d.Key == "undefined") return "";
+                        return d.Key;
+                    }, true);
+                    var keywordsGroup = remove_negative_bins_all(keywords.group().reduceSum(function (d) {
+                        return 1;
+                    }));
+                    console.timeEnd('Load Keyword Dimensions')
+
+                    //-----------------------------------------------------
+
+                    function combinations(numArr, choose, callback) {
+                        var n = numArr.length;
+                        var c = [];
+                        var inner = function (start, choose_) {
+                            if (choose_ == 0) {
+                                callback(c);
+                            } else {
+                                for (var i = start; i <= n - choose_; ++i) {
+                                    c.push(numArr[i]);
+                                    inner(i + 1, choose_ - 1);
+                                    c.pop();
+                                }
+                            }
+                        }
+                        inner(0, choose);
+                    }
+
+
+
+                 function key_search(bar,dim, q) {
+                      var pattern = '.*q.*';
+                      pattern = pattern.replace('q',q);
+                      var re = new RegExp(pattern,"i");
+                      var master_list = [];
+                        dim.all().forEach(function(d){master_list.push(d.key);});
+                      if (q != '' & q.length>2) {
+                           var filter_list = master_list.filter(function (d) {
+                              return 0 == d.search(re);
+                          });
+                          console.log(filter_list)
+                          //bar_keywords.filter(function(d){if (filter_list.indexOf(d)!=-1){return d}})
+                          keywordsGroup = filter_dimension_by_search(keywordsGroup,filter_list)
+                          //keywords.filter(filter_list)
+                          //bar.filter(filter_list)
+                      } else {
+                          //bar.filterAll();
+                      }
+                      dc.redrawAll()
+                  }
+                  function test_search(dim, q) {
+                      var pattern = '.*q.*';
+                      pattern = pattern.replace('q',q);
+                      var re = new RegExp(pattern,"i");
+                      var master_list = [];
+                      dim.group().all().forEach(function(d){master_list.push(d.key);});
+                     if (q != '' & q.length>2) {
+                           var filter_list = master_list.filter(function (d) {
+                              return 0 == d.search(re);
+                          });
+                         return filter_list
+                      } else {
+                          return []
+                      }
+                  }
+
+                    /*
+var t0 = performance.now();
+
+     // HERE we manually construct all pairwise contributions
+            var keywordPairs = ndx.dimension(function(d) {
+              if (typeof d.Key == "undefined") {return "";}
+              if (d.Key.length<=1){return "";}
+              if ('geography'.indexOf(d.Key)){
+                  var pairwise =[];
+                  combinations(
+                      d.Key,
+                      2,
+                      function output(arr) {
+                        pairwise.push(Object.values(arr));
+                      });
+                  return pairwise;
+            }
+              },true);
+
+            var keywordPairsGroup = keywordPairs.group()
+                console.log(keywordPairsGroup.top(100))
+var t1 = performance.now();
+console.log("Call to doSomething took " + (t1 - t0) + " milliseconds.")
+*/
+
+                    //-----------------------------------------------------
+                    console.time('Load Institution Dimensions')
+                    var institution = ndx.dimension(function (d) {
+                        if (typeof d.AfN == "undefined") return "";
+                        return d.AfN;
+                    }, true);
+                    var institutionGroup = remove_negative_bins_top50(institution.group().reduceSum(function (d) {
+                        return 1;
+                    }));
+                    console.timeEnd('Load Institution Dimensions')
+
+
+                    var facility = ndx.dimension(function (d) {
+                        if (typeof d.AfId == "undefined") return "";
+                        return d.AfId;
+                    }, true);
+                    var facilityGroup = remove_negative_bins_all(facility.group().reduceSum(function (d) {
+                        return 1;
+                    }));
+
+
+                    console.time('program geocoord')
+                    facilityGroup.all().forEach(function (d, i) {
+                        if (d.key in loc) {
+                            if (loc[d.key]['Location'].length > 0) {
+                                d.inst = loc[d.key]['AfN'];
+                                d.inst_id = d.key;
+                                d.lat = loc[d.key]['Location'][0].geometry.location.lat;
+                                d.lng = loc[d.key]['Location'][0].geometry.location.lng;
+                                d.key = "" + d.lat + "," + d.lng;
+                            }
+                            else {
+                                d.inst = loc[d.key]['AfN'];
+                                d.inst_id = d.key;
+                                d.lat = "";
+                                d.lng = "";
+                                d.key = "0.0,0.0"
+                            }
+                        }
+                        else {
+                            d.inst = d.key;
+                            d.inst_id = d.key;
+                            d.lat = "";
+                            d.lng = "";
+                            d.key = "0.0,0.0"
+                        }
+                        return d;
+                    });
+                    console.timeEnd('program geocoord')
+
+                    //console.log('Facility group',facilityGroup.all())
+//-----------------------------------------------------
+                    console.time('Load Author Dimensions')
+                    var author = ndx.dimension(function (d) {
+                        if (typeof d.AuN == "undefined") return "";
+                        return d.AuN;
+                    }, true);
+                    var authorGroup = remove_negative_bins_top50(author.group().reduceSum(function (d) {
+                        return 1;
+                    }));
+                    console.timeEnd('Load Author Dimensions')
+
+//-----------------------------------------------------
+                    console.time('Load Language Dimensions')
+                    var language = ndx.dimension(function (d) {
+                        if (typeof d.L == "undefined") return "";
+                        return d.L;
+                    }, true);
+                    var languageGroup = remove_negative_bins_all(language.group().reduceSum(function (d) {
+                        return 1;
+                    }));
+                    console.timeEnd('Load Language Dimensions')
+//-----------------------------------------------------
+                   console.time('Load Journal Dimensions')
+                    var journal = ndx.dimension(function (d) {
+                        if (typeof d.JN == "undefined") return "";
+                        return d.JN;
+                    });
+                    var journalGroup = remove_negative_bins_top50(journal.group().reduceSum(function (d) {
+                        return 1;
+                    }));
+                    console.timeEnd('Load Journal Dimensions')
+//-----------------------------------------------------
+                    console.time('Load Conference Dimensions')
+                    var conference = ndx.dimension(function (d) {
+                        if (typeof d.CN == "undefined") return "";
+                        return d.CN;
+                    });
+                    var conferenceGroup = remove_negative_bins_top50(conference.group().reduceSum(function (d) {
+                        return 1;
+                    }));
+                    console.timeEnd('Load Conference Dimensions')
+//---------------------------------------------------------------
+                    console.time('Load PublicationDate Dimensions')
+                    var pub_date = ndx.dimension(function (d) {
+                        if (typeof d.D == "undefined") return "";
+                        //return roundMonths(new Date(d3.time.format("%Y-%m-%d").parse(d.D)));
+                        return roundMonths(new Date(d3.time.format("%Y-%m-%d").parse(d.D)));
+                    });
+                    var pub_dateGroup = remove_empty_bins_all(pub_date.group().reduceSum(function (d) {
+                        return 1;
+                    }));
+                    console.timeEnd('Load PublicationDate Dimensions')
+                    var pub_date_year = ndx.dimension(function (d) {
+                        if (typeof d.D == "undefined") return "";
+                        //return roundMonths(new Date(d3.time.format("%Y-%m-%d").parse(d.D)));
+                        return roundMonths(new Date(d3.time.format("%Y-%m-%d").parse(d.D)));
+                    });
+                    var pub_date_year_Group = remove_negative_bins_all(pub_date_year.group().reduceSum(function (d) {
+                        return 1;
+                    }));
+
+                    console.log('author',author.group().all().length)
+                    console.log('institutions',institution.group().all().length)
+                    console.log('langauge',language.group().all().length)
+                    console.log('journal',journal.group().all().length)
+                    console.log('conference',conference.group().all().length)
+                    console.log('keywords',keywords.group().all().length)
+
+//--------- CHARTS ------------------------
+                    bar_keywords
+                        .width($('div.keywords').width()*.9)
+                        //.height(keywordsGroup.all().length*pixels_per_row)
+                        .height(150 * pixels_per_row).cap(150)
+                        .gap(1)
+                        .margins({top: 0, right: 0, bottom: 50, left: 0})
+                        .x(d3.scale.ordinal())
+                        .labelOffsetX(-label_offset)
+                        .label(function (d) {
+                            return '(' + d.value + ')  ' + toTitleCase(d.key)
+                        })
+                        .elasticX(true)
+                        .dimension(keywords)
+                        .group(keywordsGroup)
+                        .ordering(function (d) {
+                            return -d.value
+                        });
+
+
+                    bar_institution
+                        .width($('div.institution').width()*.9)
+                        //.height(institutionGroup.all().length*pixels_per_row)
+                        .height(50 * pixels_per_row).cap(50)
+                        .gap(1)
+                        .margins({top: 0, right: 0, bottom: 50, left: 0})
+                        .x(d3.scale.ordinal())
+                        .labelOffsetX(-label_offset)
+                        .label(function (d) {
+                            return '(' + d.value + ')  ' + toTitleCase(d.key)
+                        })
+                        .elasticX(true)
+                        .dimension(institution)
+                        .group(institutionGroup)
+                        .ordering(function (d) {
+                            return -d.value
+                        });
+
+                    bar_author
+                        .width($('div.author').width()*.9)
+                        //.height(authorGroup.all().length*pixels_per_row)
+                        .height(50 * pixels_per_row).cap(50)
+                        .gap(1)
+                        .margins({top: 0, right: 0, bottom: 50, left: 0})
+                        .x(d3.scale.ordinal())
+                        .labelOffsetX(-label_offset)
+                        .label(function (d) {
+                            return '(' + d.value + ')  ' + toTitleCase(d.key)
+                        })
+                        .elasticX(true)
+                        .dimension(author)
+                        .group(authorGroup)
+                        .ordering(function (d) {
+                            return -d.value
+                        });
+
+                    bar_language
+                        .width($('div.language').width()*.9)
+                        .height(languageGroup.all().length * pixels_per_row)
+                        .gap(1)
+                        .margins({top: 0, right: 0, bottom: 50, left: 0})
+                        .x(d3.scale.ordinal())
+                        .labelOffsetX(-label_offset)
+                        .label(function (d) {
+                            return '(' + d.value + ')  ' + d.key.toUpperCase()
+                        })
+                        .elasticX(true)
+                        .dimension(language)
+                        .group(languageGroup)
+                        .ordering(function (d) {
+                            return -d.value
+                        });
+
+                    bar_journal
+                        .width($('div.journal').width()*.9)
+                        //.height(journalGroup.all().length*pixels_per_row)
+                        .height(50 * pixels_per_row).cap(50)
+                        .gap(1)
+                        .margins({top: 0, right: 0, bottom: 50, left: 0})
+                        .x(d3.scale.ordinal())
+                        .labelOffsetX(-label_offset)
+                        .label(function (d) {
+                            return '(' + d.value + ')  ' + toTitleCase(d.key)
+                        })
+                        .elasticX(true)
+                        .dimension(journal)
+                        .group(journalGroup)
+                        .ordering(function (d) {
+                            return -d.value
+                        });
+
+                    bar_conference
+                        .width($('div.conference').width()*.9)
+                        //.height(conferenceGroup.all().length*pixels_per_row)
+                        .height(50 * pixels_per_row).cap(50)
+                        .gap(1)
+                        .margins({top: 0, right: 0, bottom: 50, left: 0})
+                        .x(d3.scale.ordinal())
+                        .labelOffsetX(-label_offset)
+                        .label(function (d) {
+                            return '(' + d.value + ')  ' + d.key.toUpperCase()
+                        })
+                        .elasticX(true)
+                        .dimension(conference)
+                        .group(conferenceGroup)
+                        .ordering(function (d) {
+                            return -d.value
+                        });
+
+
+//TIME CHARTS
+                  bar_date
+                        .width($('div.date').width())
+                        .height(150)
+                        .margins({top: 10, right: 0, bottom: 50, left: 50})
+                        .x(d3.time.scale())//.domain([new Date(1950, 5, 20, 12), new Date(2020, 5, 20, 18)]).range([new Date(1950, 5, 20, 12), new Date(2020, 5, 20, 18)]))
+                        .yAxis(d3.svg.axis().ticks(4).orient('left'))
+                        .xUnits(d3.time.months)
+                        .brushOn(true)
+                        .elasticX(true)
+                        .elasticY(true)
+                        //.xAxisLabel('Publication Date')
+                        .yAxisLabel('# Papers')
+                        .dimension(pub_date)
+                        .barPadding(0.1)
+                        .outerPadding(0.05)
+                        .group(pub_dateGroup)
+                        .on('pretransition', function () {
+                            rotateBarChartLabels('date');
+                            bar_date.select('g text.x-axis-label').attr("y", "10")
+                            bar_date.select('g text.y-axis-label').attr("y", "10")
+                        });
+
+                     /*bar_date_year
+                        .width($('div.date_year').width())
+                        .height(125)
+                        .margins({top: 10, right: 0, bottom: 50, left: 50})
+                        .x(d3.time.scale().domain([new Date(1950, 5, 20, 12), new Date(2020, 5, 20, 18)]).range([new Date(1950, 5, 20, 12), new Date(2020, 5, 20, 18)]))
+                        .yAxis(d3.svg.axis().ticks(3).orient('left'))
+                        .xUnits(d3.time.years)
+                        .brushOn(true)
+                        .elasticX(false)
+                        .elasticY(true)
+                        .xAxisLabel('Publication Date')
+                       // .yAxisLabel('# Papers')
+                        .dimension(pub_date_year)
+                        .barPadding(0.1)
+                        .outerPadding(0.05)
+                        .group(pub_date_year_Group)
+                        .on('pretransition', function () {
+                            rotateBarChartLabels('date_year');
+                            bar_date.select('g text.x-axis-label').attr("y", "10")
+                            bar_date.select('g text.y-axis-label').attr("y", "10")
+                        });
+                        */
+
+
+
+                    var pub_table = dc.dataTable('.dc-data-table');
+                    pub_table
+                        .width($('div.dc-data-table').width())
+                        .height($('div.dc-data-table').height())
+                        .dimension(pub_date)
+                        .group(function (d) {
+                            return d.Y
+                        })
+                        .size(500)
+                        .columns([
+                            function (d) {
+                                return d.D
+                            },
+                            function (d) {
+                                return d.CC
+                            },
+                            function (d) {
+                                var listing = "";
+                                if (d.L != '-1') {
+                                    d.L.forEach(function (i, j) {
+                                        listing += i.toUpperCase() + "<br>"
+                                    });
+                                    return listing
+                                }
+                                else return "<i>None Listed</i>"
+                            },
+                            function (d) {
+                                if (d.CN != "-1") {
+                                    return "Conference: " + d.CN.toUpperCase()
+                                }
+                                if (d.JN != "-1") {
+                                    return "Journal: " + toTitleCase(d.JN)
+                                }
+                                else {
+                                    return ""
+                                }
+                            },
+                            function (d) {
+                                var listing = "";
+                                d.AfN.forEach(function (i, j) {
+                                    if (i != '-1') {
+                                        listing += toTitleCase(i) + ': ' + toTitleCase(d.AuN[j]) + "<br>"
+                                    }
+                                    else {
+                                        listing += '<i>No Affiliation</i>: ' + toTitleCase(d.AuN[j]) + "<br>"
+                                    }
+                                });
+                                return listing
+                            },
+                            function (d) {
+                                var listing = "";
+                                d.Key.forEach(function (i, j) {
+                                    listing += toTitleCase(i) + '<br>'
+                                });
+                                return listing
+                            },
+                            function (d) {
+                                return toTitleCase(d.Ti)
+                            }
+
+                        ])
+                        .order(d3.ascending)
+                        .on('renderlet', function (table) {
+                            table.selectAll('.dc-table-group').classed('info', true);
+
+                        })
+
+                console.time('populate map')
+                    var marker = dc_leaflet.markerChart(" .mapping")
+                        .dimension(institution)
+                        .group(facilityGroup)
+                        .width($('div.mapping').width())
+                        .height($('div.mapping').height())
+                        .center([42.5, 7.5])
+                        .zoom(2)
+                        .cluster(true)
+                        //.title(function (d) {
+                        //    return toTitleCase(d.inst);
+                        //})
+                console.timeEnd('populate map')
+
+
+
+                    dc.renderAll();
+
+
+                    //KEYWORD SEARCHES
+ /* d3.select('div.keywords_header').append('div').attr('class','search')
+      .style('position','relative')
+      .style('z-index','2')
+      //.style('left','0%')
+     // .style('top','10%')
+      .style('width',$('div.keywords_header').width())
+      .style('height','50px')
+      .append('input').attr('type','text')
+      .attr('placeholder','Search...').attr('value','')
+    .on("keyup",function (){
+        var names=[]
+        var indices=[];
+        var filter_list = test_search(keywords,this.value)
+        console.log(filter_list)
+        keywords.filter(filter_list)
+
+        //[names,indices]= key_search(keywords,this.value);
+        //console.log([names,indices])
+        //if(names.length !=0){
+        //display_filter(names,indices);
+        //bar_keywords.filter(names)
+    //}
+            });
+
+
+
+
+
+
+
+*/
+
+
+
+
+
+
+ /*
+//INSERT FORCE DIRECTED GRAPH
+        var margin = {top: -5, right: -5, bottom: -5, left: -5},
+            width = $('.mapping').width() - margin.left - margin.right,
+            height = 500 - margin.top - margin.bottom,
+            radius =6;
+
+        var zoom = d3.behavior.zoom()
+            .scaleExtent([1, 10])
+            .on("zoom", zoomed);
+
+        var drag = d3.behavior.drag()
+            .origin(function(d) { return d; })
+            .on("dragstart", dragstarted)
+            .on("drag", dragged)
+            .on("dragend", dragended);
+
+        var svg_force = d3.select("div.keyword_graph").append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+          .append("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.right + ")")
+            .call(zoom);
+
+        var rect = svg_force.append("rect")
+            .attr("width", width)
+            .attr("height", height)
+            .style("fill", "none")
+            .style("pointer-events", "all");
+
+        var container = svg_force.append("g");
+
+        function zoomed() {
+          svg_force.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
+        }
+
+        function dragstarted(d) {
+          d3.event.sourceEvent.stopPropagation();
+          d3.select(this).classed("dragging", true);
+        }
+
+        function dragged(d) {
+          d3.select(this).attr("cx", d.x = d3.event.x).attr("cy", d.y = d3.event.y);
+        }
+
+        function dragended(d) {
+          d3.select(this).classed("dragging", false);
+        }
+
+
+        var color = d3.scale.ordinal(d3.schemeCategory20);
+
+        var force = d3.layout.force()
+            .gravity(.5)
+            .distance(150)
+            .charge(-200)
+            .size([width, height]);
+
+data.forEach(function(d,i){
+    if (d.Ti.includes('isprs')){console.log(d.Ti)}});
+
+d3.json("static/data/lidar_geo_full_graph_indexed.json", function(error, json) {
+                  if (error) throw error;
+    console.log('JSON DATA',json)
+    json.links = json.links.slice(0,200);
+
+
+    source_list = [];
+    target_list = [];
+    link_source = json.links.map(function(value) {
+      return value.source;
+    });
+    link_target = json.links.map(function(value) {
+      return value.target;
+    });
+    link_ref = [];
+    link_source.forEach(function(d){if(link_ref.indexOf(d)==-1){link_ref.push(d)} })
+    link_target.forEach(function(d){if(link_ref.indexOf(d)==-1){link_ref.push(d)} })
+    console.log(link_ref);
+    console.log(json.links)
+    var maxLink = _.max(json.links, function (obj) {
+      return obj.value;
+    });
+    var fix_maxLink = json.nodes[maxLink.source];
+
+  force
+      .nodes(json.nodes)
+      .links(json.links)
+      .start();
+
+  var link_width = d3.scale.log()
+    .domain([.1, 1000])
+    .range([0, 5]);
+
+  var link = svg_force.selectAll(".link")
+      .data(json.links)
+    .enter().append("line")
+      .attr("class", "link")
+        .style("stroke-width", function(d){return link_width(d.value)})
+
+
+  var node = svg_force.selectAll(".node")
+      .data(json.nodes.filter(function(d,i){if(link_ref.indexOf(i)!=-1){return d}}))
+    .enter().append("g")
+      .attr("class", "node")
+      .call(force.drag);
+
+  node.append("circle")
+      .attr("r", radius-0.75)
+
+  node.append("text")
+      .attr("dx", 12)
+      .attr("dy", ".35em")
+      .text(function(d,i) { return toTitleCase(d.id) })
+      .style('font-size','10px')
+
+  //node
+
+  force.on("tick", function() {
+    link.attr("x1", function(d) { return d.source.x; })
+        .attr("y1", function(d) { return d.source.y; })
+        .attr("x2", function(d) { return d.target.x; })
+        .attr("y2", function(d) { return d.target.y; });
+
+    //node.attr("transform", function(d) { return "translate(" + Math.max(radius, Math.min(width - radius, d.x)) + "," + Math.max(radius, Math.min(height - radius, d.y)) + ")"; });
+    node.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+
+
+
+  });
+  click_list = [];
+      node.on('click',function(d){
+        if (d3.select(this).classed("selected")==false){
+        d3.select(this).classed('selected',true)
+        d3.select(this).select('text')
+          .style('fill','blue')
+          .style('font-size','16px')
+          .style('font-weight','bold')
+        d3.select(this).select('circle').style('fill','blue')
+        d3.select(this).select('circle').attr('r', 2*radius);
+        }
+        else{
+                    d3.select(this).classed('selected',false)
+
+            d3.select(this).select('text')
+          .style('fill','black')
+          .style('font-size','10px')
+          .style('font-weight','normal')
+        d3.select(this).select('circle').style('fill','black')
+        d3.select(this).select('circle').attr('r', radius-0.75);
+        }
+
+          bar_keywords.filter(d.id)
+          dc.redrawAll()
+
+      })
+
+
+      node.on('mouseover', function(d) {
+      target_list = [];
+      link.style('stroke-width', function(l) {
+          //console.log(d);
+        if (d === l.source || d === l.target){
+            if(target_list.indexOf(l.source)==-1){target_list.push(l.source)}
+            if(target_list.indexOf(l.target)==-1){target_list.push(l.target)}
+          return 2;}
+        else{
+          return link_width(d.value)
+;}
+        }).style('stroke', function(l) {
+          //console.log(d);
+        if (d === l.source || d === l.target){
+          return 'Gray';}
+        else{
+          return 'LightGray'
+;}
+        });
+      node.selectAll('circle').style('fill',function(d,i){
+          if(target_list.indexOf(d)!=-1){
+              return 'red'
+          }
+      })
+          .style('r',function(d,i){
+          if(target_list.indexOf(d)!=-1){
+              return 1.25*radius;
+          }//else{return radius-0.75}
+      }).style('opacity',function(d,i) {
+             if (target_list.indexOf(d) != -1) {
+                 return 1
+             }
+             else {
+                 return 0.25
+             }
+         });
+         node.selectAll('text').style('font-size',function(d,i){
+          if(target_list.indexOf(d)!=-1){
+              return '14px'
+          }
+      }).style('fill',function(d,i){
+          if(target_list.indexOf(d)!=-1){
+              return 'red'
+          }
+      }).style('font-weight',function(d,i){
+          if(target_list.indexOf(d)!=-1){
+              return 'bold'
+          }
+      }).style('opacity',function(d,i) {
+             if (target_list.indexOf(d) != -1) {
+                 return 1
+             }
+             else {
+                 return 0.25
+             }
+         });
+
+          d3.select(this).select('text')
+          .style('fill','blue')
+          .style('font-size','16px')
+          .style('font-weight','bold')
+      d3.select(this).select('circle').style('fill','blue')
+      d3.select(this).select('circle').attr('r', 2*radius);
+    });
+
+    // Set the stroke width back to normal when mouse leaves the node.
+    node.on('mouseout', function(d) {
+        target_list = [];
+        link.style('stroke-width', function(l) {
+        if (d === l.source || d === l.target){
+            if(target_list.indexOf(l.source)==-1){target_list.push(l.source)}
+            if(target_list.indexOf(l.target)==-1){target_list.push(l.target)}
+          return link_width(d.value);}
+        else{
+          return link_width(d.value);}
+        }).style('stroke', function(l) {
+          //console.log(d);
+        if (d === l.source || d === l.target){
+          return 'LightGray';}
+        else{
+          return 'LightGray'
+;}
+        });
+
+
+      node.selectAll('circle').style('fill',function(d){
+          if(target_list.indexOf(d)!=-1){
+              return 'black'
+          }
+      })
+          .style('r',function(d){
+          if(target_list.indexOf(d)!=-1){
+              return radius-0.75;
+          }else{return radius-0.75}
+      }).style('opacity',function(d,i) {
+             if (target_list.indexOf(d) != -1) {
+                 return 1
+             }
+             else {
+                 return 1
+             }
+         });
+
+
+      node.selectAll('text').style('font-size',function(d,i){
+          if(target_list.indexOf(d)!=-1){
+              return '10px'
+          }
+      }).style('fill',function(d,i){
+          if(target_list.indexOf(d)!=-1){
+              return 'black'
+          }
+      }).style('font-weight',function(d,i){
+          if(target_list.indexOf(d)!=-1){
+              return 'normal'
+          }
+      }).style('opacity',function(d,i) {
+             if (target_list.indexOf(d) != -1) {
+                 return 1
+             }
+             else {
+                 return 1
+             }
+         });
+        d3.select(this).select('text')
+        .style('fill','black')
+          .style('font-size','10px')
+          .style('font-weight','normal')
+        /*
+        node.selectAll('text')
+            .style('fill','black')
+            .style('font-size','8px')
+            .style('font-weight','normal')
+        //node.selectAll('circle')
+        //    .style('fill','black')
+      d3.select(this).select('circle').attr('r', radius-0.75)
+      link.style('stroke-width', 2);
+    });
+
+});
+*/
+
+
+
+   }//);
+
+        }
+
+
+</script>
+
+
+    <div id="sec1" class="text-page task-header">
+      <div class="container-fluid">
+        <div class="row">
+          <div class="col-md-12" style="text-align:center; background:#eeeeee; padding-top:50px;padding-bottom:25px;">
+            <h1>Literature Exploration</h1>
+            <p class="lead">Identifying the Techniques, Tools, and Collaborations Driving the Academic Conversation </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="lit_review" style="padding:25px" >
+
+
+        <div class="row">
+            <div class="col-md-3">
+                <div class="dc-data-count col-md-12">
+                    <h3>Academic Publications</h3>
+                    <p><span class="total-count"></span> Publications from Institution: <b>Pennsylvania State University</b></p>
+                    <p><span class="filter-count"></span> papers selected | <a
+                            href="javascript:dc.filterAll();dc.renderAll();clearsearch('');">Reset All</a></p>
+                </div>
+            </div>
+            <div class="col-md-9" style="padding-top:15px;">
+                <h4 style="padding-bottom:10px;">Time Evolution of Keywords/Institutions</h4>
+                <div class="col-md-12 date" style="padding-left:25px;"></div>
+                <!--<div class="col-md-12 date_year" style="padding-left:25px;"></div>-->
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-2">
+                <h4>Keywords</h4>
+                <!--<div class="col-md-12 keywords_header" ></div>-->
+                <div class="col-md-12 keywords" style="height:200px;overflow: auto"></div>
+            </div>
+             <div class="col-md-2">
+                <h4>Institution</h4>
+                <div class="col-md-12 institution" style="height:200px;overflow: auto"></div>
+            </div>
+             <div class="col-md-2">
+                <h4>Author</h4>
+                <div class="col-md-12 author" style="height:200px;overflow: auto"></div>
+            </div>
+            <div class="col-md-2">
+                <h4>Language</h4>
+                <div class="col-md-12 language" style="height:200px;overflow: auto"></div>
+             </div>
+             <div class="col-md-2">
+                <h4>Journal</h4>
+                <div class="col-md-12 journal" style="height:200px;overflow: auto"></div>
+            </div>
+            <div class="col-md-2">
+                <h4>Conference</h4>
+                <div class="col-md-12 conference" style="height:200px;overflow: auto"></div>
+            </div>
+        </div>
+        <div class="row" style="padding-top:50px;">
+            <div class="col-md-5">
+                <h4>Collaboration Network</h4>
+                <div class="col-md-12 mapping" style="height:350px"></div>
+            </div>
+            <div class="col-md-7">
+                <div class="col-md-12">
+                <h4>Publication Listing</h4>
+                  <div class="table-responsive" style="height:350px;overflow: auto;">
+                      <table class="table col-md-12 dc-data-table" id="pubtable">
+                            <thead class="fixed-header" id="fixed-header" >
+                                <tr >
+                                  <th class="dc-table-column _0 ">Date</th>
+                                  <th class="dc-table-column _1">Citation</th>
+                                  <th class="dc-table-column _2">Lang.</th>
+                                  <th class="dc-table-column _3">Journal/Conf</th>
+                                  <th class="dc-table-column _4">Affil/Author</th>
+                                  <th class="dc-table-column _5">Keywords</th>
+                                  <th class="dc-table-column _6">Title</th>
+                                </tr>
+                            </thead>
+                       </table>
+                  </div>
+            </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12 keyword_graph"></div>
+        </div>
+        <!--
+        <div class="row" id="collab_network">
+            <div class="col-md-6" >
+
+                <div class="col-md-12">
+
+                </div>
+                <!--
+                <div class="col-md-12">
+                    <div class="row" style="min-height:200px;">
+                         <div class="col-md-4">
+                            <h4>Keywords</h4>
+                            <div class="col-md-12 keywords_header" ></div>
+                            <div class="col-md-12 keywords" style="height:200px;overflow: auto"></div>
+                        </div>
+                         <div class="col-md-4">
+                            <h4>Institution</h4>
+                            <div class="col-md-12 institution" style="height:200px;overflow: auto"></div>
+                        </div>
+                         <div class="col-md-4">
+                            <h4>Author</h4>
+                            <div class="col-md-12 author" style="height:200px;overflow: auto"></div>
+                        </div>
+                    </div>
+                    <div class="row" style="min-height:200px;padding-top:20px;">
+                         <div class="col-md-4">
+                            <h4>Language</h4>
+                            <div class="col-md-12 language" style="height:200px;overflow: auto"></div>
+                         </div>
+                         <div class="col-md-4">
+                            <h4>Journal</h4>
+                            <div class="col-md-12 journal" style="height:200px;overflow: auto"></div>
+                        </div>
+                        <div class="col-md-4">
+                            <h4>Conference</h4>
+                            <div class="col-md-12 conference" style="height:200px;overflow: auto"></div>
+                        </div>
+
+
+                    </div>
+                </div>-/->
+            </div>
+            <div class="col-md-6" id="table">
+                <ul class="nav nav-pills mb-3" id="pills-tab" role="tablist">
+                  <li class="nav-item">
+                    <a class="nav-link active" id="pills-map-tab" data-toggle="pill" href="#pills-map" role="tab" aria-controls="pills-map" aria-selected="true">Global Network</a>
+                  </li>
+                  <!--<li class="nav-item">
+                    <a class="nav-link" id="pills-publication-tab" data-toggle="pill" href="#pills-publications" role="tab" aria-controls="pills-publication" aria-selected="false">Publications</a>
+                  </li>-/->
+                  <li class="nav-item">
+                    <a class="nav-link" id="pills-keyword-tab" data-toggle="pill" href="#pills-keyword" role="tab" aria-controls="pills-keyword" aria-selected="false">Keyword Graph</a>
+                  </li>
+                </ul>
+
+
+
+
+                <div class="tab-content" id="pills-tabContent">
+                  <div class="tab-pane fade show active" id="pills-map" role="tabpanel" aria-labelledby="pills-map-tab">
+                        <div class="col-md-12 mapping" style="height:650px;overflow: auto"></div>
+                  </div>
+                 <!-- <div class="tab-pane fade" id="pills-publications" role="tabpanel" aria-labelledby="pills-publication-tab">
+
+                  </div>-/->
+                  <div class="tab-pane fade" id="pills-keyword" role="tabpanel" aria-labelledby="pills-keyword-tab">
+                      <h4>Keyword Graph</h4>
+                      <div class="col-md-12 keyword_graph"></div>
+                  </div>
+                </div>
+
+
+            </div>
+
+        </div>
+       -->
+
+
+    </div>
+
+
+
+    <script>
+
+
+    $(function() {
+
+
+        function pad(n, width, z) {
+          z = z || '0';
+          n = n + '';
+          return n.length >= width ? n : new Array(width - n.length + 1).join(z) + n;
+        }
+
+        var filenames =[];
+        var i;
+        for (i = 1980; i < 2019; i++) {
+            filenames.push("static/data/PSU_Cleaned_ByYear/psu_"+i+'.json')
+        }
+
+         var queue = d3.queue();
+         console.time('Files Loaded')
+         filenames.forEach(function(d,i){
+             if (i>-1){
+                 queue.defer(d3.json, d)
+             }
+        });
+          queue.awaitAll(ready);
+          console.timeEnd('Files Loaded')
+
+    });
+
+    function ready(error, results) {
+          if (error) throw error;
+          grid ("#lit_review",[].concat.apply([],results))}
+
+
+    //$(function() {
+     //   d3.json("static/data/PSU_Cleaned/psu_full_small_4.json", function(jsondata) {grid ("#lit_review",jsondata)});});
+    </script>
+
+    <script src="static/dcjs_example/jquery_1.11.min.js"></script>
+    <script src="static/bootstrap_4.0/js/bootstrap.min.js"></script>
+    <script src="static/dcjs_example/jquery.lazyload.js"></script>
+
+</body>
+</html>
